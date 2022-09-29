@@ -33,6 +33,6 @@ The sample size evaluated as described above is much larger than the dataset siz
 
 Since the data is nonparametric, the test used was the Wilcoxon test. Performing the test on the data colected in Spain, the p value was 0.27, which is larger than the significance level of 0.05. Therefore it is not possible to reject the null hypothesis.
 
-# 7. Conclusion
+# 6. Conclusion
 
 To recall the business problem, the objective is to identify wich of two payment methods of an e-commerce increases purchases. Given the data is nonparametric, Wilcoxon test is an appropriate statistical test. Considering the significance level adopted, the observed difference in purchases is not statistically significant.
