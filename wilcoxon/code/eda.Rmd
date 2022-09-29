@@ -1,0 +1,309 @@
+---
+title: "Teste A/B"
+output: html_notebook
+---
+
+# Imports
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(moments)# skewness & kurtosis
+library(Rmisc)# multiplot
+library(zoo)# rollmean
+```
+
+## Funções de suporte
+
+```{r}
+data_summary <- function(df){
+    # Central tendency - mean, median
+    ct1 <- sapply(df, mean)
+    ct2 <- sapply(df, median)
+    
+    # Variability - std, coefficient of variation, min, max, range, skew, kurtosis
+    d1 <- sapply(df, min)
+    d2 <- sapply(df, max)
+    d3 <- sapply(df, function(x){
+        max(x)-min(x)
+    })
+    d4 <- sapply(df, function(x){
+        n <- length(x)
+        sqrt(var(x)*(n-1)/n)
+    })
+    d5 <- sapply(df, skewness)
+    d6 <- sapply(df, kurtosis)
+    d7 <- d4/ct1# cv
+    
+    # Concatenate
+    s <- cbind(d1, d2, d3, ct1, ct2, d4, d7, d5, d6)
+    colnames(s) <- c('min', 'max', 'range', 'mean', 'median', 'std', 'cv', 'skew', 'kurtosis')
+    
+    return(s)
+}
+```
+
+## Importar dados
+
+```{r}
+df_raw <- read.csv('../data/raw/ab_testing.csv')
+```
+
+# 1 Descrição dos dados
+
+```{r}
+df1 <- df_raw
+```
+
+## 1.1 Renomear colunas
+
+```{r}
+colnames(df1)
+```
+
+## 1.2 Dimensão dos dados
+
+```{r}
+sprintf('Número de linhas: %d', nrow(df1))
+sprintf('Número de colunas: %d', ncol(df1))
+```
+
+## 1.3 Tratar os NAs
+
+```{r}
+sapply(df1, function(x) sum(is.na(x)))
+```
+
+## 1.4 Tipo dos dados
+
+```{r}
+df1[['date']] <- as.POSIXct(df1[['date']], format='%Y-%m-%d')
+str(df1)
+```
+
+## 1.5 Estatística descritiva
+
+```{r}
+data_summary(df1[4:5])
+```
+
+# 2 EDA
+
+```{r}
+df2 <- df1
+```
+
+## 2.1 Homogeneidade dos grupos
+
+```{r}
+grpa <- filter(df2, group=='GRP A')
+grpb <- filter(df2, group=='GRP B')
+```
+
+### 2.1.1 Contagem dos grupos
+
+```{r}
+table(df2$group)/nrow(df2)
+```
+
+```{r}
+data <- as.data.frame(table(df2$group))
+ggplot(data, aes(x=Var1, y=Freq)) + geom_bar(stat = "identity")
+```
+
+```{r}
+roll_window <- 50
+aux_a <- aggregate(purchases ~ date, data=grpa, FUN=sum)
+ma <- rollmean(aux_a$purchases, roll_window, align='right', fill=NA)
+aux_a <- cbind(aux_a, ma)
+aux_b <- aggregate(purchases ~ date, data=grpb, FUN=sum)
+ma <- rollmean(aux_b$purchases, roll_window, align='right', fill=NA)
+aux_b <- cbind(aux_b, ma)
+
+p1 <- ggplot(aux_a, aes(x=date, y=purchases))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 300)+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=date, y=purchases))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 300)+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+### 2.1.2 Country
+
+```{r}
+aux_a <- as.data.frame(sort(table(grpa$country), decreasing=TRUE))
+aux_b <- as.data.frame(sort(table(grpb$country), decreasing=TRUE))
+
+p1 <- ggplot(aux_a, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+100*table(grpa$country)/nrow(grpa)
+```
+
+```{r}
+100*table(grpb$country)/nrow(grpb)
+```
+
+### 2.1.3 Gender
+
+```{r}
+aux_a <- as.data.frame(sort(table(grpa$gender), decreasing=TRUE))
+aux_b <- as.data.frame(sort(table(grpb$gender), decreasing=TRUE))
+
+p1 <- ggplot(aux_a, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+100*table(grpa$gender)/nrow(grpa)
+```
+
+```{r}
+100*table(grpb$gender)/nrow(grpb)
+```
+
+### 2.1.4 Spent
+
+```{r}
+aux_a <- data.frame(spent=grpa$spent)
+aux_b <- data.frame(spent=grpb$spent)
+
+p1 <- ggplot(aux_a, aes(x=spent))+
+  geom_histogram(bins=20, color='black')+
+  xlim(0, 10000)+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=spent))+
+  geom_histogram(bins=20, color='black')+
+  xlim(0, 10000)+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+roll_window <- 50
+aux_a <- aggregate(spent ~ date, data=grpa, FUN=sum)
+ma <- rollmean(aux_a$spent, roll_window, align='right', fill=NA)
+aux_a <- cbind(aux_a, ma)
+aux_b <- aggregate(spent ~ date, data=grpb, FUN=sum)
+ma <- rollmean(aux_b$spent, roll_window, align='right', fill=NA)
+aux_b <- cbind(aux_b, ma)
+
+p1 <- ggplot(aux_a, aes(x=date, y=spent))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 120000)+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=date, y=spent))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 120000)+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+p <- ggplot(grpa, aes(x = country, y = spent)) +
+  geom_boxplot() +
+  ggtitle('Group A')
+p
+```
+
+```{r}
+p <- ggplot(grpb, aes(x = country, y = spent)) +
+  geom_boxplot() +
+  ggtitle('Group B')
+p
+```
+
+### 2.1.5 Purchases
+
+```{r}
+aux_a <- data.frame(purchases=grpa$purchases)
+aux_b <- data.frame(purchases=grpb$purchases)
+
+p1 <- ggplot(aux_a, aes(x=purchases))+
+  geom_histogram(bins=15, color='black')+
+  xlim(0, 30)+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=purchases))+
+  geom_histogram(bins=15, color='black')+
+  xlim(0, 30)+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+roll_window <- 50
+aux_a <- aggregate(purchases ~ date, data=grpa, FUN=sum)
+ma <- rollmean(aux_a$purchases, roll_window, align='right', fill=NA)
+aux_a <- cbind(aux_a, ma)
+aux_b <- aggregate(purchases ~ date, data=grpb, FUN=sum)
+ma <- rollmean(aux_b$purchases, roll_window, align='right', fill=NA)
+aux_b <- cbind(aux_b, ma)
+
+p1 <- ggplot(aux_a, aes(x=date, y=purchases))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 300)+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=date, y=purchases))+
+  geom_point()+
+  geom_line(aes(y=ma), color='red')+
+  ylim(0, 300)+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+p <- ggplot(grpa, aes(x = country, y = purchases)) +
+  geom_boxplot() +
+  ggtitle('Group A')
+p
+```
+
+```{r}
+p <- ggplot(grpb, aes(x = country, y = purchases)) +
+  geom_boxplot() +
+  ggtitle('Group B')
+p
+```
+
+### 2.1.6 Device
+
+```{r}
+aux_a <- as.data.frame(table(grpa$device))
+aux_b <- as.data.frame(table(grpb$device))
+
+p1 <- ggplot(aux_a, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group A')
+p2 <- ggplot(aux_b, aes(x=Var1, y=Freq))+
+  geom_bar(stat = "identity")+
+  ggtitle('Group B')
+multiplot(p1, p2, cols=2)
+```
+
+```{r}
+100*table(grpa$device)/nrow(grpa)
+```
+
+```{r}
+100*table(grpb$device)/nrow(grpb)
+```
